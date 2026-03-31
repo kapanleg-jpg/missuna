@@ -1,1 +1,187 @@
-.
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ง้อแก 💌</title>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap" rel="stylesheet">
+<style>
+html, body { margin:0; padding:0; height:100%; font-family:'Sarabun', sans-serif; overflow:hidden; background:#fff0f5;}
+canvas { display:block; position:absolute; top:0; left:0; z-index:1; }
+#bgVideo { position:fixed; top:0; left:0; width:100%; height:100%; z-index:0; object-fit:cover; display:none; }
+#chatContainer {
+  display:none; flex-direction: column; align-items: center;
+  width: 80%; max-width: 600px; height: 60vh; overflow-y: auto;
+  padding: 10px; position:absolute; z-index:2; left:50%; top:50%; transform:translate(-50%, -50%);
+}
+.messageBubble {
+  background: rgba(0,0,0,0.7);
+  color:white; padding:12px 18px; border-radius:15px; margin:10px 0;
+  opacity:0; transform:translateY(20px); transition:opacity 0.5s ease, transform 0.5s ease;
+  width:fit-content; max-width:80%; font-size:24px; border:1px solid rgba(255,255,255,0.2);
+}
+.messageBubble.show { opacity:1; transform:translateY(0); }
+
+#startButton {
+  position:absolute; z-index:3; top:50%; left:50%; transform:translate(-50%,-50%);
+  font-size:28px; padding:15px 30px; border:none; border-radius:10px;
+  background:#ff6b6b; color:white; cursor:pointer; box-shadow:0 4px 8px rgba(0,0,0,0.3);
+}
+</style>
+</head>
+<body>
+
+<canvas id="threeCanvas"></canvas>
+<video id="bgVideo" src="https://drive.google.com/file/d/1pg2NtTVCMBesFuN0lb3lT6iIOIzeC7Es/preview" muted loop playsinline></video>
+<audio id="myAudio" src="LoveShine.mp3" preload="auto"></audio>
+<div class="chatContainer" id="chatContainer"></div>
+<button id="startButton">🌟 คลิกที่นี่เริ่มเลย!</button>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.min.js"></script>
+<script>
+// --- ฉาก 1: กล่อง 3D ---
+const canvas = document.getElementById('threeCanvas');
+const scene = new THREE.Scene();
+scene.background = null;
+
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth/window.innerHeight, 0.1, 1000);
+camera.position.set(0,3,5);
+
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+
+// Lights
+scene.add(new THREE.AmbientLight(0xffffff,0.6));
+const dir = new THREE.DirectionalLight(0xffffff,1);
+dir.position.set(5,10,5); dir.castShadow=true; scene.add(dir);
+
+// Plane
+const plane = new THREE.Mesh(new THREE.PlaneGeometry(20,20), new THREE.ShadowMaterial({opacity:0.35}));
+plane.rotation.x=-Math.PI/2; plane.position.y=0; plane.receiveShadow=true; scene.add(plane);
+
+// Box + Lid
+const box = new THREE.Mesh(new THREE.BoxGeometry(1.5,1.5,1.5), new THREE.MeshStandardMaterial({color:0xff6b6b, metalness:0.6, roughness:0.3}));
+box.position.set(0,1,0); box.castShadow=true; box.receiveShadow=true; scene.add(box);
+
+const lid = new THREE.Mesh(new THREE.BoxGeometry(1.55,0.4,1.55), new THREE.MeshStandardMaterial({color:0xff8b8b, metalness:0.6, roughness:0.25}));
+lid.position.set(0, box.position.y+0.95,0); lid.castShadow=true; lid.receiveShadow=true; scene.add(lid);
+
+// Bow
+function createBow(){ 
+  const g=new THREE.Group(); 
+  const m=new THREE.MeshStandardMaterial({color:0xffffff, metalness:0.2, roughness:0.3}); 
+  const l=new THREE.Mesh(new THREE.TorusGeometry(0.3,0.08,16,100,Math.PI),m); l.rotation.z=0.5; l.position.set(-0.2,0,0); g.add(l);
+  const r=new THREE.Mesh(new THREE.TorusGeometry(0.3,0.08,16,100,Math.PI),m); r.rotation.z=-0.5; r.position.set(0.2,0,0); g.add(r);
+  return g;
+}
+const bow=createBow(); lid.add(bow); bow.position.set(0,0.25,0);
+
+// Inner glow
+const inner=new THREE.Mesh(new THREE.SphereGeometry(0.35,32,32), new THREE.MeshStandardMaterial({color:0x00ffd4,emissive:0x00ffd4}));
+inner.position.set(0,1,0); inner.castShadow=true; inner.receiveShadow=true; scene.add(inner);
+
+// Sakura particles
+const sakura=[]; 
+for(let i=0;i<50;i++){ 
+  const p=new THREE.Mesh(new THREE.SphereGeometry(0.05,8,8), new THREE.MeshStandardMaterial({color:0xffc0cb})); 
+  resetSakura(p); scene.add(p); sakura.push(p);
+}
+function resetSakura(p){ p.position.set((Math.random()-0.5)*5,4+Math.random()*2,(Math.random()-0.5)*5); p.speedY=0.01+Math.random()*0.02; p.speedX=(Math.random()-0.5)*0.01;}
+
+// Text Sprite
+const canvasText=document.createElement('canvas'); canvasText.width=256; canvasText.height=64;
+const ctx=canvasText.getContext('2d'); ctx.font="28px Arial"; ctx.fillStyle="#ffffff"; ctx.textAlign="center"; ctx.fillText("คลิกที่กล่องสิ",128,42);
+const spriteMat=new THREE.SpriteMaterial({map:new THREE.CanvasTexture(canvasText), transparent:true});
+const textSprite=new THREE.Sprite(spriteMat); textSprite.scale.set(2,0.5,1); textSprite.position.set(0, box.position.y+2,0); scene.add(textSprite);
+
+// Animate
+let lidOpen=false;
+const clock=new THREE.Clock();
+function animate(){
+  requestAnimationFrame(animate);
+  const t=clock.getElapsedTime();
+  const yOffset=Math.sin(t*5)*0.03;
+  const xOffset=Math.sin(t*3)*0.015;
+  const scaleY=1+Math.sin(t*5)*0.05;
+  const scaleX=1-Math.sin(t*5)*0.025;
+  box.position.set(xOffset,1+yOffset,0); box.scale.set(scaleX,scaleY,scaleX);
+  inner.position.set(xOffset,1+yOffset,0); inner.scale.set(scaleX,scaleY,scaleX);
+  lid.position.set(xOffset,box.position.y+0.95+yOffset,0); lid.scale.set(scaleX,scaleY,scaleX);
+  sakura.forEach(p=>{ p.position.y-=p.speedY; p.position.x+=p.speedX; if(p.position.y<-1) resetSakura(p);});
+  spriteMat.opacity=0.6+0.4*Math.sin(t*3);
+  renderer.render(scene,camera);
+}
+animate();
+
+// --- ฉาก 2 ---
+const chatContainer=document.getElementById('chatContainer');
+const audio=document.getElementById('myAudio');
+const bgVideo=document.getElementById('bgVideo');
+const messages=[
+"อะโหลล","แกยังอยากคุยกับเราอยู่มั้ย","เราขอโทษนะ ที่วันนั่นเราพิมไม่ดีใส่เแก 😓",
+"มันอาจจะเป็นเพราะว่าเราคิดมาก","เลยทำให้พิมสิ่งที่ไม่ควรพิมใส่เแกไป",
+"แกยัง.... ไม่ได้เริ่มต้นใหม่ไปเเล้วใช่มั้ย","ให้โอกาสเราหน่อยได้หรือป่าว 👉👈",
+"เราไม่เเน่ใจอะ ว่าเราชนะคนเก่าแกได้หรือยัง","มันเป็นเวลาเเค่เเป๊ปเดียวเอง",
+"แต่เรากลับรู้สึก ชอบเแก","บอกไม่ถูกเหมือนกัน ไม่เคยเเบบความรู้สึกแบบนี้กับใครมาก่อน",
+"ถ้ารู้สึกไวไป ขอโทษอีกทีนะ","ขอโทษที่เงียบเเละไม่ได้ตอบอะไรกลับไปเลย",
+"เราอยากให้เรากับเแก ไปกันต่อได้นานกว่านี้","เราอยากดูแลเแก ให้ดี เหมือนที่แก อยากได้รับมันมาตลอด",
+"ดีกันนะ โอ๋เอ๋ เราเห็นเแกสำคัญมากๆ","เราอยากให้เแกได้รู้ ว่าการเป็นคนพิเศษมันดีเเค่ไหน",
+"เลยตั้งใจเขียนข้อความพวกนี้มาหาแก","ให้โอกาสเราหน่อยได้หรือป่าว 👉👈",
+"หวังว่าจะเปิดโอกาสให้กันอีกครั้ง เรารอเแกตอบกลับมานะะ"
+];
+
+function scrollToBottom(){ chatContainer.scrollTop=chatContainer.scrollHeight; }
+function showMessages(i=0){ if(i>=messages.length) return;
+  const bubble=document.createElement('div'); bubble.className='messageBubble'; bubble.textContent=messages[i];
+  chatContainer.appendChild(bubble); setTimeout(()=>bubble.classList.add('show'),50); scrollToBottom();
+  setTimeout(()=>showMessages(i+1),4000);
+}
+
+// --- ปุ่มเริ่มสำหรับมือถือและคอม ---
+const startBtn=document.getElementById('startButton');
+function startExperience(){
+  if(lidOpen) return;
+  lidOpen=true;
+  startBtn.style.display='none';
+
+  lid.rotation.x=-Math.PI/2;
+
+  // แสงฟุ้งเต็มจอ
+  const flashPlaneMat = new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:0});
+  const flashPlane = new THREE.Mesh(new THREE.PlaneGeometry(50,50), flashPlaneMat);
+  flashPlane.position.set(0,1,0);
+  scene.add(flashPlane);
+
+  let flashTime=0;
+  const flashDuration=1500;
+  function animateFlash(time){
+    flashTime+=16;
+    const t=Math.min(flashTime/flashDuration,1);
+    flashPlane.material.opacity = t*0.8;
+    flashPlane.scale.setScalar(1 + t*5);
+    if(t<1) requestAnimationFrame(animateFlash);
+    else {
+      scene.remove(flashPlane);
+      renderer.domElement.style.display='none';
+      // --- วิดีโอ + แชท + เพลง ---
+      bgVideo.style.display='block';
+      bgVideo.currentTime=0;
+      bgVideo.play().catch(err=>console.log(err));
+
+      chatContainer.style.display='flex';
+      audio.currentTime=0;
+      audio.play().catch(err=>console.log(err));
+
+      showMessages();
+    }
+  }
+  animateFlash();
+}
+
+// จับทั้ง click และ touch สำหรับมือถือและคอม
+startBtn.addEventListener('click',startExperience);
+startBtn.addEventListener('touchstart',startExperience);
+</script>
+</body>
+</html>
